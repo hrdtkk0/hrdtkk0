@@ -4,6 +4,8 @@ $( "document" ).ready(function(){
 	lastaccvv = '';
 	vv = '';
 	ogr = 0;
+	toutt = 333;
+	clown = 0;
 	
 	function randomInteger(min, max) {
 	// случайное число от min до (max+1)
@@ -19,10 +21,17 @@ $( "document" ).ready(function(){
 	})
 
 	function f() {
+		
+		clown=randomInteger(1,50);
+		if(clown=3){
+			toutt=100;
+		}else{
+			tout=333
+		}
 		sound.play();
 		ii++;
 		if (ii < hmt) {
-    setTimeout(f, 150+(randomInteger(1,5)*100));
+    setTimeout(f, toutt);
   }}
 	
 	
