@@ -1,0 +1,39 @@
+body{
+background-color: #E5E7EA;
+color:#353535;
+}
+
+.pod{
+	float: left;
+	margin:4px;
+	border: 1px solid #CCCCCC;
+	background-color: #F6F6F9;
+	padding: 3px;
+	margin-top: 3px;
+}
+
+#tt{
+	margin:4px;
+	border: 0px solid #CCCCCC;
+	text-align: center;
+	width: 150px;
+}
+
+#n{
+	text-align: center;
+	height: 18px;
+}
+
+#m{
+	text-align: center;
+	 height: 18px;
+}
+
+
+#pr{
+	clear: both;
+}
+
+#test{
+	font-size: 20px;
+}
