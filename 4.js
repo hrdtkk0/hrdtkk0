@@ -16,19 +16,27 @@ $( "document" ).ready(function(){
 	var sound = new Howl({
 	src: ['acer.mp3']
   	});
+  	var sound1 = new Howl({
+	src: ['hat.mp3']
+  	});
+	
 	
 	$(document).mousemove(function(e){
 	})
 
 	function f() {
 		
-		clown=randomInteger(1,50);
-		if(clown=3){
+		clown=randomInteger(1,5);
+		if(clown==3){
 			toutt=100;
 		}else{
-			tout=333
+			tout=333;
 		}
-		sound.play();
+		if(clown<4){
+		sound.play();}
+		else{
+		sound1.play();
+		}
 		ii++;
 		if (ii < hmt) {
     setTimeout(f, toutt);
