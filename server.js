@@ -1,7 +1,6 @@
 
 import express from 'express';
 import cors from 'cors';
-import 'dotenv/config';
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -9,9 +8,9 @@ const PORT = process.env.PORT || 8080;
 app.use(cors());
 app.use(express.json());
 
-// Heartbeat for Railway health check
+// Health check endpoint for Railway
 app.get('/', (req, res) => {
-  res.send('Online');
+  res.status(200).send('OK');
 });
 
 app.post('/api/book', async (req, res) => {
@@ -24,7 +23,8 @@ app.post('/api/book', async (req, res) => {
   const chatId = process.env.TELEGRAM_CHAT_ID;
 
   if (!token || !chatId) {
-    return res.status(500).json({ success: false, error: 'Env variables missing' });
+    console.error('Missing Telegram Config');
+    return res.status(500).json({ success: false, error: 'Config missing' });
   }
 
   try {
@@ -36,7 +36,7 @@ app.post('/api/book', async (req, res) => {
 <b>Email:</b> ${email}
 <b>Guests:</b> ${guests}
 <b>Stay:</b> ${checkIn} to ${checkOut} (${nights} nights)
-<b>💰 TOTAL TO PAY: ${totalPrice}</b>
+<b>💰 TOTAL: ${totalPrice}</b>
     `.trim();
 
     const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -54,12 +54,12 @@ app.post('/api/book', async (req, res) => {
 
     res.json({ success: true });
   } catch (e) {
-    console.error('Error:', e.message);
+    console.error('Booking error:', e.message);
     res.status(500).json({ success: false, error: e.message });
   }
 });
 
-// Explicitly bind to 0.0.0.0 for Railway/Docker
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server listening on port ${PORT}`);
+// Start listening - Railway will automatically stop if this fails to bind
+app.listen(PORT, () => {
+  console.log(`Server started on port ${PORT}`);
 });
