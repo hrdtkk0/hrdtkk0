@@ -1,58 +1,83 @@
 
 import express from 'express';
 import cors from 'cors';
+import 'dotenv/config';
 
 const app = express();
 
-// Railway автоматически передает переменную PORT. Если её нет (локально), используем 8080
 const PORT = process.env.PORT || 8080;
 
 app.use(cors());
 app.use(express.json());
 
-// 1. САМЫЙ ВАЖНЫЙ МАРШРУТ для Railway (Health Check)
-// Если Railway увидит 'OK', он поймет, что сервер живой
+// Railway Health Check
 app.get('/', (req, res) => {
   res.status(200).send('OK');
 });
 
-// Проверка здоровья
-app.get('/health', (req, res) => {
-  res.json({ status: 'up' });
-});
-
 app.post('/api/book', async (req, res) => {
-  const { apartmentTitle, firstName, phone } = req.body;
+  const { 
+    apartmentTitle, 
+    firstName, 
+    lastName, 
+    phone, 
+    email, 
+    checkIn, 
+    checkOut, 
+    guests, 
+    paymentMethod 
+  } = req.body;
   
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
 
   if (!token || !chatId) {
+    console.error('Missing Telegram Config');
     return res.status(500).json({ success: false, error: 'Config missing' });
   }
 
   try {
-    const text = `Новая бронь!\nОбъект: ${apartmentTitle}\nИмя: ${firstName}\nТел: ${phone}`;
+    const text = `
+<b>🚀 New Booking Request</b>
+
+<b>Property:</b> ${apartmentTitle}
+<b>Guest Name:</b> ${firstName} ${lastName}
+<b>Email:</b> ${email}
+<b>Phone:</b> ${phone}
+<b>Guests:</b> ${guests}
+<b>Check-in:</b> ${checkIn}
+<b>Check-out:</b> ${checkOut}
+<b>Payment Method:</b> ${paymentMethod?.toUpperCase() || 'BLIK'}
+
+<i>Status: Pending Confirmation</i>
+    `.trim();
+
     const url = `https://api.telegram.org/bot${token}/sendMessage`;
     
-    await fetch(url, {
+    const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' })
+      body: JSON.stringify({ 
+        chat_id: chatId, 
+        text: text, 
+        parse_mode: 'HTML' 
+      })
     });
+
+    const data = await response.json();
+    if (!data.ok) throw new Error(data.description);
 
     res.json({ success: true });
   } catch (e) {
+    console.error('Booking Error:', e.message);
     res.status(500).json({ success: false, error: e.message });
   }
 });
 
-// 2. ВАЖНО: Слушаем на 0.0.0.0. Это критично для Docker/Railway
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server started on port ${PORT}`);
 });
 
-// Обработка мягкого завершения (чтобы логи были чище)
 process.on('SIGTERM', () => {
   console.log('Received SIGTERM, shutting down...');
   process.exit(0);
