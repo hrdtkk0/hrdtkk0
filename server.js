@@ -1,81 +1,59 @@
 
 import express from 'express';
 import cors from 'cors';
-import 'dotenv/config';
 
 const app = express();
-// Railway ОБЯЗАТЕЛЬНО требует использовать переменную процесса PORT
+
+// Railway автоматически передает переменную PORT. Если её нет (локально), используем 8080
 const PORT = process.env.PORT || 8080;
 
 app.use(cors());
 app.use(express.json());
 
-// Главная страница для проверки Health Check (чтобы Railway видел, что сервер жив)
+// 1. САМЫЙ ВАЖНЫЙ МАРШРУТ для Railway (Health Check)
+// Если Railway увидит 'OK', он поймет, что сервер живой
 app.get('/', (req, res) => {
   res.status(200).send('OK');
 });
 
-// Тестовый маршрут для проверки связи
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'active', timestamp: new Date().toISOString() });
+// Проверка здоровья
+app.get('/health', (req, res) => {
+  res.json({ status: 'up' });
 });
 
 app.post('/api/book', async (req, res) => {
-  console.log('>>> Incoming booking request:', req.body.apartmentTitle);
+  const { apartmentTitle, firstName, phone } = req.body;
   
-  const { 
-    firstName, 
-    lastName, 
-    email, 
-    phone, 
-    checkIn, 
-    checkOut, 
-    apartmentTitle, 
-    paymentMethod 
-  } = req.body;
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
 
-  const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-  const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
-
-  if (!BOT_TOKEN || !CHAT_ID) {
-    console.error('Missing TG config');
-    return res.status(500).json({ success: false, error: 'Server TG config missing' });
+  if (!token || !chatId) {
+    return res.status(500).json({ success: false, error: 'Config missing' });
   }
 
   try {
-    const text = `
-<b>New Booking!</b>
-Apartment: ${apartmentTitle}
-Guest: ${firstName} ${lastName || ''}
-Dates: ${checkIn} to ${checkOut}
-Phone: ${phone}
-Email: ${email}
-Payment: ${paymentMethod}
-    `.trim();
-
-    const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
-    const response = await fetch(url, {
+    const text = `Новая бронь!\nОбъект: ${apartmentTitle}\nИмя: ${firstName}\nТел: ${phone}`;
+    const url = `https://api.telegram.org/bot${token}/sendMessage`;
+    
+    await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: CHAT_ID,
-        text: text,
-        parse_mode: 'HTML'
-      })
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' })
     });
 
-    const result = await response.json();
-    if (!result.ok) throw new Error(result.description);
-
-    console.log('>>> Telegram sent!');
     res.json({ success: true });
-  } catch (err) {
-    console.error('>>> Error:', err.message);
-    res.status(500).json({ success: false, error: err.message });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 
-// Важно: слушаем на 0.0.0.0
+// 2. ВАЖНО: Слушаем на 0.0.0.0. Это критично для Docker/Railway
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`>>> Server is running on port ${PORT}`);
+  console.log(`Server started on port ${PORT}`);
+});
+
+// Обработка мягкого завершения (чтобы логи были чище)
+process.on('SIGTERM', () => {
+  console.log('Received SIGTERM, shutting down...');
+  process.exit(0);
 });
