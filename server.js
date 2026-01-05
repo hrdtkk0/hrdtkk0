@@ -4,24 +4,25 @@ import cors from 'cors';
 import 'dotenv/config';
 
 const app = express();
-// Railway автоматически назначает PORT, обычно это 8080
-const PORT = process.env.PORT || 3001;
+// Railway ОБЯЗАТЕЛЬНО требует использовать переменную процесса PORT
+const PORT = process.env.PORT || 8080;
 
 app.use(cors());
 app.use(express.json());
 
-// Простая проверка для браузера: зайти на https://ваш-урл.railway.app/
+// Главная страница для проверки Health Check (чтобы Railway видел, что сервер жив)
 app.get('/', (req, res) => {
-  res.status(200).send('<h1>UrbanStay Backend is Live!</h1><p>Telegram notification service is ready.</p>');
+  res.status(200).send('OK');
 });
 
-// Логирование всех входящих запросов
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-  next();
+// Тестовый маршрут для проверки связи
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'active', timestamp: new Date().toISOString() });
 });
 
 app.post('/api/book', async (req, res) => {
+  console.log('>>> Incoming booking request:', req.body.apartmentTitle);
+  
   const { 
     firstName, 
     lastName, 
@@ -30,69 +31,51 @@ app.post('/api/book', async (req, res) => {
     checkIn, 
     checkOut, 
     apartmentTitle, 
-    paymentMethod, 
-    language = 'en' 
+    paymentMethod 
   } = req.body;
 
   const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
   const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
   if (!BOT_TOKEN || !CHAT_ID) {
-    console.error("CRITICAL ERROR: TELEGRAM_BOT_TOKEN or CHAT_ID is missing in environment variables!");
-    return res.status(500).json({ 
-      success: false, 
-      error: "Notification service configuration missing on server." 
-    });
+    console.error('Missing TG config');
+    return res.status(500).json({ success: false, error: 'Server TG config missing' });
   }
 
   try {
-    console.log(`Attempting to send Telegram notification for: ${apartmentTitle}`);
-
-    const message = `
-<b>🆕 New Booking Received!</b>
-━━━━━━━━━━━━━━━━━━
-<b>🏠 Apartment:</b> ${apartmentTitle}
-<b>👤 Guest:</b> ${firstName} ${lastName || ''}
-<b>📅 Dates:</b> ${checkIn} to ${checkOut}
-<b>📧 Email:</b> ${email}
-<b>📞 Phone:</b> ${phone || 'Not provided'}
-<b>💳 Payment:</b> ${paymentMethod.toUpperCase()}
-<b>🌐 Lang:</b> ${language.toUpperCase()}
-━━━━━━━━━━━━━━━━━━
+    const text = `
+<b>New Booking!</b>
+Apartment: ${apartmentTitle}
+Guest: ${firstName} ${lastName || ''}
+Dates: ${checkIn} to ${checkOut}
+Phone: ${phone}
+Email: ${email}
+Payment: ${paymentMethod}
     `.trim();
 
-    const telegramUrl = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
-    
-    const response = await fetch(telegramUrl, {
+    const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+    const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: CHAT_ID,
-        text: message,
+        text: text,
         parse_mode: 'HTML'
-      }),
+      })
     });
 
-    const data = await response.json();
+    const result = await response.json();
+    if (!result.ok) throw new Error(result.description);
 
-    if (!response.ok || !data.ok) {
-      console.error('Telegram API Error Response:', data);
-      throw new Error(data.description || 'Telegram API failed');
-    }
-
-    console.log('✅ Telegram notification sent successfully to ID:', CHAT_ID);
-    res.status(200).json({ success: true });
-
-  } catch (error) {
-    console.error('❌ Booking Process Failed:', error.message);
-    res.status(500).json({ 
-      success: false, 
-      error: `Server failed to send notification: ${error.message}` 
-    });
+    console.log('>>> Telegram sent!');
+    res.json({ success: true });
+  } catch (err) {
+    console.error('>>> Error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
+// Важно: слушаем на 0.0.0.0
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`>>> UrbanStay Backend is LIVE on port ${PORT}`);
-  console.log(`>>> Health check available at: http://0.0.0.0:${PORT}/`);
+  console.log(`>>> Server is running on port ${PORT}`);
 });
