@@ -4,12 +4,18 @@ import cors from 'cors';
 import 'dotenv/config';
 
 const app = express();
+// Railway автоматически назначает PORT, обычно это 8080
 const PORT = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(express.json());
 
-// Log incoming requests
+// Простая проверка для браузера: зайти на https://ваш-урл.railway.app/
+app.get('/', (req, res) => {
+  res.status(200).send('<h1>UrbanStay Backend is Live!</h1><p>Telegram notification service is ready.</p>');
+});
+
+// Логирование всех входящих запросов
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   next();
@@ -28,19 +34,20 @@ app.post('/api/book', async (req, res) => {
     language = 'en' 
   } = req.body;
 
-  // Telegram Credentials from Environment Variables
   const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
   const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
   if (!BOT_TOKEN || !CHAT_ID) {
-    console.error("Missing Telegram configuration (BOT_TOKEN or CHAT_ID)");
-    return res.status(500).json({ success: false, error: "Notification service not configured" });
+    console.error("CRITICAL ERROR: TELEGRAM_BOT_TOKEN or CHAT_ID is missing in environment variables!");
+    return res.status(500).json({ 
+      success: false, 
+      error: "Notification service configuration missing on server." 
+    });
   }
 
   try {
-    console.log(`Sending Telegram notification for booking: ${apartmentTitle}`);
+    console.log(`Attempting to send Telegram notification for: ${apartmentTitle}`);
 
-    // Format the message for Telegram
     const message = `
 <b>🆕 New Booking Received!</b>
 ━━━━━━━━━━━━━━━━━━
@@ -54,8 +61,9 @@ app.post('/api/book', async (req, res) => {
 ━━━━━━━━━━━━━━━━━━
     `.trim();
 
-    // Call Telegram API (Standard HTTPS - Never blocked)
-    const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+    const telegramUrl = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+    
+    const response = await fetch(telegramUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -68,17 +76,23 @@ app.post('/api/book', async (req, res) => {
     const data = await response.json();
 
     if (!response.ok || !data.ok) {
-      throw new Error(data.description || 'Failed to send Telegram message');
+      console.error('Telegram API Error Response:', data);
+      throw new Error(data.description || 'Telegram API failed');
     }
 
-    console.log('Telegram notification sent successfully');
+    console.log('✅ Telegram notification sent successfully to ID:', CHAT_ID);
     res.status(200).json({ success: true });
+
   } catch (error) {
-    console.error('Booking Error:', error.message);
-    res.status(500).json({ success: false, error: error.message });
+    console.error('❌ Booking Process Failed:', error.message);
+    res.status(500).json({ 
+      success: false, 
+      error: `Server failed to send notification: ${error.message}` 
+    });
   }
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`>>> Backend is LIVE on port ${PORT}`);
+  console.log(`>>> UrbanStay Backend is LIVE on port ${PORT}`);
+  console.log(`>>> Health check available at: http://0.0.0.0:${PORT}/`);
 });
