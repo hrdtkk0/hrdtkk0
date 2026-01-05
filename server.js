@@ -9,71 +9,65 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// Логирование
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-  next();
+// 1. МГНОВЕННЫЙ ЗАПУСК СЕРВЕРА (чтобы Railway не убивал процесс по SIGTERM)
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`>>> Backend is LIVE on port ${PORT}`);
 });
 
-// Настройка транспортера
-// Для Railway/Cloud лучше всего работает 587 + secure: false (STARTTLS)
+// 2. НАСТРОЙКА ПОЧТЫ ЧЕРЕЗ СЕРВИС (самый надежный способ для Gmail)
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT || '587'),
-  secure: false, // false для 587, true для 465
-  pool: true,    // Использование пула соединений
+  service: 'gmail',
   auth: {
     user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS, // Вводить 16 символов БЕЗ пробелов
+    pass: process.env.SMTP_PASS?.replace(/\s+/g, ''), // Удаляем любые пробелы автоматически
   },
-  tls: {
-    rejectUnauthorized: false,
-    minVersion: 'TLSv1.2'
-  },
-  connectionTimeout: 20000,
-  greetingTimeout: 20000,
+  pool: true,
+  maxConnections: 3,
 });
 
-// Неблокирующая проверка
-console.log("Starting SMTP verification...");
-transporter.verify().then(() => {
-  console.log('>>> SMTP Server is ready to send emails');
-}).catch((err) => {
-  console.error('!!! SMTP VERIFICATION FAILED !!!');
-  console.error('Reason:', err.message);
-});
+// Фоновая проверка (не блокирует запуск)
+setTimeout(() => {
+  console.log("Checking SMTP connection in background...");
+  transporter.verify((error) => {
+    if (error) {
+      console.error('!!! SMTP Error:', error.message);
+      console.log('Server is still running, but emails might not be sent.');
+    } else {
+      console.log('>>> SMTP connection SUCCESSFUL');
+    }
+  });
+}, 5000);
 
 app.post('/api/book', async (req, res) => {
   const { firstName, email, apartmentTitle, paymentMethod, language = 'en' } = req.body;
 
-  if (!email) return res.status(400).json({ success: false, error: 'Email required' });
+  if (!email) return res.status(400).json({ success: false, error: 'Email missing' });
 
   try {
-    console.log(`Sending confirmation to: ${email}`);
+    console.log(`Email request: to=${email} for=${apartmentTitle}`);
     
-    await transporter.sendMail({
+    // Добавляем таймаут на саму отправку, чтобы запрос не висел вечно
+    const mailPromise = transporter.sendMail({
       from: `"UrbanStay" <${process.env.SMTP_USER}>`,
       to: email,
-      subject: language === 'pl' ? `Potwierdzenie: ${apartmentTitle}` : `Booking Confirmation: ${apartmentTitle}`,
-      html: `
-        <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee;">
-          <h2 style="color: #4f46e5;">Success!</h2>
-          <p>Hello ${firstName},</p>
-          <p>Your stay at <b>${apartmentTitle}</b> is confirmed via ${paymentMethod.toUpperCase()}.</p>
-          <p>Thank you for choosing UrbanStay!</p>
-        </div>
-      `,
+      subject: language === 'pl' ? `Rezerwacja: ${apartmentTitle}` : `Booking: ${apartmentTitle}`,
+      html: `<div style="font-family:sans-serif;padding:20px;">
+               <h2>Reservation Confirmed!</h2>
+               <p>Hello ${firstName}, your stay at <b>${apartmentTitle}</b> is booked.</p>
+             </div>`,
     });
 
-    console.log('Email sent!');
+    // Если письмо не отправится за 10 секунд — выдаем ошибку, но не вешаем сервер
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Mail timeout')), 10000)
+    );
+
+    await Promise.race([mailPromise, timeoutPromise]);
+
+    console.log('Email sent successfully');
     res.status(200).json({ success: true });
   } catch (error) {
-    console.error('SendMail Error:', error.message);
+    console.error('Booking API Error:', error.message);
     res.status(500).json({ success: false, error: error.message });
   }
-});
-
-// Принудительно слушаем на 0.0.0.0 для Railway
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server is running on port ${PORT}`);
 });
