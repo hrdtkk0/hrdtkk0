@@ -15,53 +15,70 @@ app.use((req, res, next) => {
   next();
 });
 
-// Настройка почты
+const smtpPort = parseInt(process.env.SMTP_PORT || '465');
+
+// Настройка почты с расширенными таймаутами для облачных сред
 const smtpConfig = {
   host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT || '465'),
-  // Важно: для порта 465 secure должен быть true, для 587 - false
-  secure: process.env.SMTP_PORT === '465' || process.env.SMTP_SECURE === 'true',
+  port: smtpPort,
+  // Для 465 порта ВСЕГДА true, для 587 ВСЕГДА false
+  secure: smtpPort === 465, 
   auth: {
     user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS, // Здесь должен быть "Пароль приложения"
+    pass: process.env.SMTP_PASS, 
   },
-  connectionTimeout: 10000, // 10 секунд на попытку подключения
+  tls: {
+    // Не падать, если есть проблемы с цепочкой сертификатов на сервере
+    rejectUnauthorized: false
+  },
+  connectionTimeout: 20000, // 20 секунд
+  greetingTimeout: 20000,
+  socketTimeout: 20000,
 };
 
-console.log('Attempting to initialize SMTP with host:', smtpConfig.host, 'port:', smtpConfig.port);
+console.log(`Attempting SMTP: ${smtpConfig.host}:${smtpConfig.port} (secure: ${smtpConfig.secure})`);
 
 const transporter = nodemailer.createTransport(smtpConfig);
 
-// Проверка подключения при старте
+// Проверка подключения (не блокирует запуск сервера)
 transporter.verify((error, success) => {
   if (error) {
     console.error('!!! SMTP VERIFICATION FAILED !!!');
-    console.error('Error Details:', error.message);
+    console.error('Message:', error.message);
     console.error('Code:', error.code);
-    console.error('Full Error:', JSON.stringify(error));
   } else {
-    console.log('>>> SMTP Server is ready to send emails');
+    console.log('>>> SMTP Server is ready');
   }
 });
 
 app.post('/api/book', async (req, res) => {
   const { firstName, email, apartmentTitle, paymentMethod, language = 'en' } = req.body;
 
+  if (!email) return res.status(400).json({ success: false, error: 'Email required' });
+
   try {
-    console.log(`Booking request for ${apartmentTitle} from ${email}`);
+    console.log(`Sending email to ${email} for ${apartmentTitle}...`);
     
     await transporter.sendMail({
       from: `"UrbanStay" <${process.env.SMTP_USER}>`,
       to: email,
       subject: language === 'pl' ? `Potwierdzenie: ${apartmentTitle}` : `Confirmation: ${apartmentTitle}`,
-      text: `Hello ${firstName}, your booking for ${apartmentTitle} is confirmed via ${paymentMethod}.`,
-      html: `<h1 style="color: #4f46e5;">Booking Confirmed!</h1><p>Hello ${firstName}, your stay at <b>${apartmentTitle}</b> is reserved.</p>`,
+      text: `Hello ${firstName}, your booking for ${apartmentTitle} is confirmed.`,
+      html: `
+        <div style="font-family: sans-serif; max-width: 600px; border: 1px solid #eee; padding: 20px;">
+          <h2 style="color: #4f46e5;">Booking Confirmed!</h2>
+          <p>Hello <b>${firstName}</b>,</p>
+          <p>Your stay at <b>${apartmentTitle}</b> has been successfully reserved via ${paymentMethod.toUpperCase()}.</p>
+          <hr style="border: none; border-top: 1px solid #eee;" />
+          <p style="font-size: 12px; color: #666;">This is an automated message from UrbanStay.</p>
+        </div>
+      `,
     });
 
-    console.log('Email sent successfully to', email);
+    console.log('Email successfully sent');
     res.status(200).json({ success: true });
   } catch (error) {
-    console.error('Email sending failed:', error.message);
+    console.error('Email Error:', error.message);
     res.status(500).json({ success: false, error: error.message });
   }
 });
