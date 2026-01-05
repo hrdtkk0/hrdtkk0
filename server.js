@@ -5,14 +5,18 @@ import 'dotenv/config';
 
 const app = express();
 
+// Railway provides the PORT environment variable automatically.
 const PORT = process.env.PORT || 8080;
 
 app.use(cors());
 app.use(express.json());
 
-// Railway Health Check
+/**
+ * HEALTH CHECK (CRITICAL FOR RAILWAY)
+ * This prevents the SIGTERM error by responding to Railway's deployment probes.
+ */
 app.get('/', (req, res) => {
-  res.status(200).send('OK');
+  res.status(200).send('UrbanStay Backend is Live');
 });
 
 app.post('/api/book', async (req, res) => {
@@ -32,24 +36,30 @@ app.post('/api/book', async (req, res) => {
   const chatId = process.env.TELEGRAM_CHAT_ID;
 
   if (!token || !chatId) {
-    console.error('Missing Telegram Config');
-    return res.status(500).json({ success: false, error: 'Config missing' });
+    console.error('Missing Telegram Environment Variables!');
+    return res.status(500).json({ success: false, error: 'Server configuration error' });
   }
 
   try {
+    // English template for Telegram notifications as requested
     const text = `
-<b>🚀 New Booking Request</b>
+<b>🔔 New Booking Notification</b>
 
 <b>Property:</b> ${apartmentTitle}
-<b>Guest Name:</b> ${firstName} ${lastName}
+<b>Guest:</b> ${firstName} ${lastName}
 <b>Email:</b> ${email}
 <b>Phone:</b> ${phone}
-<b>Guests:</b> ${guests}
-<b>Check-in:</b> ${checkIn}
-<b>Check-out:</b> ${checkOut}
-<b>Payment Method:</b> ${paymentMethod?.toUpperCase() || 'BLIK'}
+<b>Total Guests:</b> ${guests}
 
-<i>Status: Pending Confirmation</i>
+<b>Stay Period:</b>
+📅 From: ${checkIn}
+📅 To: ${checkOut}
+
+<b>Payment Info:</b>
+💳 Method: ${paymentMethod?.toUpperCase() || 'BLIK'}
+💰 Status: Awaiting Processing
+
+<i>Sent via UrbanStay Booking System</i>
     `.trim();
 
     const url = `https://api.telegram.org/bot${token}/sendMessage`;
@@ -69,16 +79,17 @@ app.post('/api/book', async (req, res) => {
 
     res.json({ success: true });
   } catch (e) {
-    console.error('Booking Error:', e.message);
+    console.error('Telegram API Error:', e.message);
     res.status(500).json({ success: false, error: e.message });
   }
 });
 
+// Bind to 0.0.0.0 to ensure the service is reachable externally
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server started on port ${PORT}`);
+  console.log(`>>> Server is running on port ${PORT}`);
 });
 
 process.on('SIGTERM', () => {
-  console.log('Received SIGTERM, shutting down...');
+  console.log('SIGTERM received. Cleaning up.');
   process.exit(0);
 });
