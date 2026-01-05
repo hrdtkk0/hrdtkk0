@@ -1,95 +1,96 @@
 
 import express from 'express';
 import cors from 'cors';
-import 'dotenv/config';
+import dotenv from 'dotenv';
+
+// Initialize environment variables
+dotenv.config();
 
 const app = express();
-
-// Railway provides the PORT environment variable automatically.
 const PORT = process.env.PORT || 8080;
 
 app.use(cors());
 app.use(express.json());
 
-/**
- * HEALTH CHECK (CRITICAL FOR RAILWAY)
- * This prevents the SIGTERM error by responding to Railway's deployment probes.
- */
+// Health check for Railway deployment - MUST respond with 200
 app.get('/', (req, res) => {
-  res.status(200).send('UrbanStay Backend is Live');
+  res.status(200).send('Server is healthy and running.');
 });
 
 app.post('/api/book', async (req, res) => {
-  const { 
-    apartmentTitle, 
-    firstName, 
-    lastName, 
-    phone, 
-    email, 
-    checkIn, 
-    checkOut, 
-    guests, 
-    paymentMethod 
-  } = req.body;
-  
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
-
-  if (!token || !chatId) {
-    console.error('Missing Telegram Environment Variables!');
-    return res.status(500).json({ success: false, error: 'Server configuration error' });
-  }
-
   try {
-    // English template for Telegram notifications as requested
-    const text = `
-<b>🔔 New Booking Notification</b>
+    const { 
+      apartmentTitle, 
+      firstName, 
+      lastName, 
+      phone, 
+      email, 
+      checkIn, 
+      checkOut, 
+      guests, 
+      paymentMethod 
+    } = req.body;
+    
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.TELEGRAM_CHAT_ID;
+
+    if (!token || !chatId) {
+      throw new Error('Telegram credentials not configured in environment variables.');
+    }
+
+    // English notification template
+    const message = `
+<b>🚀 NEW BOOKING REQUEST</b>
 
 <b>Property:</b> ${apartmentTitle}
-<b>Guest:</b> ${firstName} ${lastName}
+<b>Guest Name:</b> ${firstName} ${lastName}
 <b>Email:</b> ${email}
 <b>Phone:</b> ${phone}
-<b>Total Guests:</b> ${guests}
+<b>Number of Guests:</b> ${guests}
 
-<b>Stay Period:</b>
-📅 From: ${checkIn}
-📅 To: ${checkOut}
+<b>Check-in:</b> ${checkIn}
+<b>Check-out:</b> ${checkOut}
 
-<b>Payment Info:</b>
-💳 Method: ${paymentMethod?.toUpperCase() || 'BLIK'}
-💰 Status: Awaiting Processing
-
-<i>Sent via UrbanStay Booking System</i>
+<b>Payment Method:</b> ${paymentMethod?.toUpperCase() || 'BLIK'}
+<b>Status:</b> Awaiting confirmation
     `.trim();
 
-    const url = `https://api.telegram.org/bot${token}/sendMessage`;
+    const telegramUrl = `https://api.telegram.org/bot${token}/sendMessage`;
     
-    const response = await fetch(url, {
+    const response = await fetch(telegramUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         chat_id: chatId, 
-        text: text, 
+        text: message, 
         parse_mode: 'HTML' 
       })
     });
 
-    const data = await response.json();
-    if (!data.ok) throw new Error(data.description);
+    const result = await response.json();
+    if (!result.ok) {
+      console.error('Telegram Error:', result);
+      return res.status(500).json({ success: false, error: 'Telegram API failed' });
+    }
 
-    res.json({ success: true });
-  } catch (e) {
-    console.error('Telegram API Error:', e.message);
-    res.status(500).json({ success: false, error: e.message });
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Internal Server Error:', error.message);
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Bind to 0.0.0.0 to ensure the service is reachable externally
+// Start listening immediately to satisfy Railway's health check
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`>>> Server is running on port ${PORT}`);
+  console.log(`Server successfully started on port ${PORT}`);
 });
 
+// Graceful shutdown and error prevention
 process.on('SIGTERM', () => {
-  console.log('SIGTERM received. Cleaning up.');
+  console.log('SIGTERM signal received: closing HTTP server');
   process.exit(0);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('There was an uncaught error', err);
 });
