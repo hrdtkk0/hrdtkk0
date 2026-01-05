@@ -1,52 +1,61 @@
 
 import express from 'express';
 import cors from 'cors';
-import 'dotenv/config'; // Теперь это не вызовет ошибку, так как мы добавили пакет в package.json
+import 'dotenv/config';
 
 const app = express();
 
-// Railway автоматически передает переменную PORT.
+// Railway uses the PORT environment variable
 const PORT = process.env.PORT || 8080;
 
+// Enable CORS for all origins to allow GitHub Pages to communicate with this API
 app.use(cors());
 app.use(express.json());
 
-// Главный маршрут для Railway Health Check
+// Critical: Health check for Railway deployment status
 app.get('/', (req, res) => {
-  res.status(200).send('Backend is running');
-});
-
-// Проверка здоровья API
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
-    timestamp: new Date().toISOString(),
-    env_loaded: !!process.env.TELEGRAM_BOT_TOKEN 
-  });
+  res.status(200).send('UrbanStay API is operational');
 });
 
 app.post('/api/book', async (req, res) => {
-  console.log('Booking request received for:', req.body.apartmentTitle);
+  console.log('Received booking for:', req.body.apartmentTitle);
   
-  const { apartmentTitle, firstName, phone, email, checkIn, checkOut, paymentMethod } = req.body;
+  const { 
+    apartmentTitle, 
+    firstName, 
+    lastName, 
+    phone, 
+    email, 
+    checkIn, 
+    checkOut, 
+    guests, 
+    paymentMethod,
+    totalPrice,
+    nights
+  } = req.body;
   
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
 
   if (!token || !chatId) {
-    console.error('Telegram configuration is missing in Railway Variables!');
+    console.error('Environment variables for Telegram are missing.');
     return res.status(500).json({ success: false, error: 'Server configuration error' });
   }
 
   try {
     const text = `
-<b>🏨 New Booking Request</b>
-<b>Apartment:</b> ${apartmentTitle}
-<b>Guest:</b> ${firstName}
-<b>Dates:</b> ${checkIn} to ${checkOut}
-<b>Phone:</b> ${phone}
+<b>🚀 NEW BOOKING REQUEST</b>
+
+<b>Property:</b> ${apartmentTitle}
+<b>Guest:</b> ${firstName} ${lastName || ''}
 <b>Email:</b> ${email}
-<b>Payment:</b> ${paymentMethod}
+<b>Phone:</b> ${phone}
+<b>Guests:</b> ${guests || 1}
+
+<b>Stay:</b> ${checkIn} to ${checkOut} (${nights || 0} nights)
+<b>Payment:</b> ${paymentMethod?.toUpperCase() || 'BLIK'}
+
+<b>💰 TOTAL TO PAY: ${totalPrice || 'N/A'}</b>
     `.trim();
 
     const url = `https://api.telegram.org/bot${token}/sendMessage`;
@@ -66,17 +75,16 @@ app.post('/api/book', async (req, res) => {
 
     res.json({ success: true });
   } catch (e) {
-    console.error('Telegram API Error:', e.message);
+    console.error('Booking Error:', e.message);
     res.status(500).json({ success: false, error: e.message });
   }
 });
 
-// ВАЖНО: Привязка к 0.0.0.0 обязательна для Railway
+// Start server and bind to 0.0.0.0
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`>>> Server is actively listening on port ${PORT}`);
+  console.log(`>>> Backend active on port ${PORT}`);
 });
 
 process.on('SIGTERM', () => {
-  console.log('SIGTERM received. Cleaning up...');
   process.exit(0);
 });
